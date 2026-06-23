@@ -272,7 +272,7 @@
         <div class="modal-box max-w-md">
             <h3 class="font-bold text-lg mb-2">Join A Trip</h3>
             <p class="text-sm text-base-content-secondary mb-4">
-                Enter the JSONBin Bin ID and Access Key shared with you. The name you choose here is only for your local reference.
+                Enter the JSONBin Bin ID and Master Key shared with you. The name you choose here is only for your local reference.
             </p>
 
             <form id="join-trip-form" class="space-y-4">
@@ -285,7 +285,7 @@
                     <input type="text" id="join-bin-id" class="input input-bordered font-mono text-sm" placeholder="xxxxxxxxxxxxxxxx" required />
                 </div>
                 <div class="form-control">
-                    <label class="label"><span class="label-text">Access Key</span></label>
+                    <label class="label"><span class="label-text">Master Key</span></label>
                     <input type="password" id="join-access-key" class="input input-bordered font-mono text-sm" placeholder="$2b$10$..." required />
                 </div>
                 <button type="submit" class="btn btn-primary w-full">Connect to Trip</button>
@@ -297,12 +297,12 @@
         </div>
     </dialog>
 
-    <!-- Share Trip Modal (show bin ID + access key for sharing) -->
+    <!-- Share Trip Modal (show bin ID + master key for sharing) -->
     <dialog id="share_trip_modal" class="modal">
         <div class="modal-box max-w-md">
             <h3 class="font-bold text-lg mb-2">Share Trip</h3>
             <p class="text-sm text-base-content-secondary mb-4">
-                Send the Bin ID and Access Key below to anyone you want to collaborate with. They can join the trip using these.
+                Send the Bin ID and Master Key below to anyone you want to collaborate with. They can join the trip using these.
             </p>
 
             <div id="share-trip-unavailable" class="alert alert-warning text-sm hidden">
@@ -320,13 +320,13 @@
                     </div>
                 </div>
                 <div class="form-control">
-                    <label class="label"><span class="label-text">Access Key</span></label>
+                    <label class="label"><span class="label-text">Master Key</span></label>
                     <div class="flex gap-2">
                         <input type="password" id="share-access-key" class="input input-bordered flex-grow font-mono text-sm" readonly />
                         <button id="toggle-share-access-key" class="btn btn-outline btn-square" title="Show/Hide">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                         </button>
-                        <button id="copy-share-access-key" class="btn btn-outline btn-square" title="Copy Access Key">
+                        <button id="copy-share-access-key" class="btn btn-outline btn-square" title="Copy Master Key">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                         </button>
                     </div>

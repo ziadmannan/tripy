@@ -541,7 +541,7 @@ function updateTripDropdown() {
         // Share button (only shown for synced trips)
         if (trip.binId) {
             const shareBtn = document.createElement('button');
-            shareBtn.className = 'btn btn-ghost btn-xs btn-square opacity-0 group-hover:opacity-100 transition-opacity text-info';
+            shareBtn.className = 'btn btn-ghost btn-xs btn-square opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-info';
             shareBtn.title = 'Share trip';
             shareBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>';
             shareBtn.addEventListener('click', (e) => {
@@ -553,7 +553,7 @@ function updateTripDropdown() {
 
         // Delete icon (dustbin) - local only deletion
         const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'btn btn-ghost btn-xs btn-square opacity-0 group-hover:opacity-100 transition-opacity text-error';
+        deleteBtn.className = 'btn btn-ghost btn-xs btn-square opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-error';
         deleteBtn.title = 'Delete trip (local only)';
         deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>';
 
@@ -805,8 +805,12 @@ document.getElementById('sync-now-btn').addEventListener('click', async () => {
     btn.textContent = 'Syncing...';
 
     try {
+        // syncToRemote reads remote, merges with local, writes both back up
+        // and to localStorage, then invalidates the item cache.
         await syncToRemote();
-        await fetchAndRenderData();
+        // Re-read the now-fresh local data and re-render.
+        allItems = (await batchGetLocalData())[0] || [];
+        renderItems();
         updateSyncDisplay();
         window.app.updateStatus('Synced!');
     } catch (error) {
@@ -883,7 +887,7 @@ toggleShareAccessKeyBtn.addEventListener('click', () => {
 });
 
 copyShareAllBtn.addEventListener('click', () => {
-    const text = `Join my trip on Tripy!\n\nBin ID: ${shareBinId.value}\nAccess Key: ${shareAccessKey.value}`;
+    const text = `Join my trip on Tripy!\n\nBin ID: ${shareBinId.value}\nMaster Key: ${shareAccessKey.value}`;
     navigator.clipboard.writeText(text).then(() => {
         window.app.updateStatus('Trip details copied! Paste and send to someone.');
     });
@@ -928,6 +932,55 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     fetchAndRenderData();
+
+    // --- Auto-sync: pull collaborators' changes in the background ---
+    // A manual sync reads remote + merges + writes back, but only a reload
+    // used to show others' edits because the in-memory item cache went stale.
+    // The cache is now invalidated on remote writes (see sync.js), so polling
+    // fetchRemoteAndMerge + re-rendering surfaces new data live.
+
+    let _autoSyncTimer = null;
+
+    async function autoSyncPull() {
+        const trip = getActiveTrip();
+        if (!trip || !trip.binId) return;
+
+        // Don't poll if we're offline or the bin is known-unavailable
+        const status = getSyncStatus();
+        if (status === 'offline' || status === 'remote-deleted' || status === 'unconfigured') {
+            return;
+        }
+
+        try {
+            const changed = await fetchRemoteAndMerge();
+            if (changed) {
+                // Cache was invalidated inside fetchRemoteAndMerge; re-read + render
+                allItems = (await batchGetLocalData())[0] || [];
+                renderItems();
+                updateSyncDisplay();
+            }
+        } catch (e) {
+            console.error('Auto-sync pull failed:', e);
+        }
+    }
+
+    // Pull on a 30s interval while the tab is active
+    _autoSyncTimer = setInterval(autoSyncPull, 30000);
+
+    // Pull immediately when the user returns to the tab (catches changes made
+    // while the app was backgrounded, without spamming the rate-limited API)
+    window.addEventListener('focus', autoSyncPull);
+
+    // Clear the timer if the page is hidden to respect the rate limit
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && _autoSyncTimer) {
+            clearInterval(_autoSyncTimer);
+            _autoSyncTimer = null;
+        } else if (!document.hidden && !_autoSyncTimer) {
+            autoSyncPull();
+            _autoSyncTimer = setInterval(autoSyncPull, 30000);
+        }
+    });
 
     itemNotesInput.addEventListener('input', () => {
         itemNotesPreview.innerHTML = generateMarkdownPreview(itemNotesInput.value);

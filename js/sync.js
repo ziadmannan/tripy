@@ -9,6 +9,26 @@ const SYNC_QUEUE_KEY = 'trip_sync_queue';
 let _syncInProgress = false;
 let _statusListeners = [];
 let _remoteDeletedListeners = [];
+let _cacheInvalidator = null;
+
+/**
+ * Allow the data layer (data.js) to register a callback that clears its
+ * in-memory item cache. sync.js writes merged remote data straight to
+ * localStorage, bypassing that cache — without invalidating it, subsequent
+ * reads return stale data until a full page reload. data.js registers its
+ * clearItemsCache() here to avoid a circular import (sync.js must not import
+ * data.js, since data.js already imports sync.js).
+ * @param {Function} fn
+ */
+export function registerCacheInvalidator(fn) {
+    _cacheInvalidator = fn;
+}
+
+function invalidateLocalCache() {
+    if (typeof _cacheInvalidator === 'function') {
+        _cacheInvalidator();
+    }
+}
 
 /**
  * Get the sync queue key for current trip
@@ -258,6 +278,7 @@ export async function syncToRemote() {
         }
 
         localStorage.setItem(storageKey, JSON.stringify(mergedItems));
+        invalidateLocalCache();
 
         clearSyncQueue();
 
@@ -309,6 +330,7 @@ export async function fetchRemoteAndMerge() {
         const mergedItems = mergeItems(localItems, remoteItems);
 
         localStorage.setItem(storageKey, JSON.stringify(mergedItems));
+        invalidateLocalCache();
 
         updateTrip(trip.id, {
             lastSync: new Date().toISOString(),
@@ -360,7 +382,13 @@ export async function joinRemoteTrip(binId, accessKey) {
 }
 
 /**
- * Merge local and remote items using last-write-wins
+ * Merge local and remote items using last-write-wins, honouring deletions.
+ *
+ * An item can carry a `deleted: true` tombstone with a `deletedAt`/
+ * `updatedAt` timestamp. A tombstone wins over any non-tombstone version
+ * whose timestamp is older, so that a local (or remote) delete is not
+ * resurrected by a stale copy of the item coming from the other side.
+ *
  * @param {Array} localItems
  * @param {Array} remoteItems
  * @returns {Array}
@@ -375,13 +403,23 @@ function mergeItems(localItems, remoteItems) {
         const localItem = merged.get(id);
 
         if (!localItem) {
+            // Only exists remotely — keep it, unless it's already a tombstone
+            // (then keep the tombstone so the deletion propagates).
             merged.set(id, remoteItem);
         } else {
-            const remoteTime = new Date(remoteItem.updatedAt || 0).getTime();
-            const localTime = new Date(localItem.updatedAt || localItem.updatedAt || 0).getTime();
-            if (remoteTime > localTime) {
+            const remoteTime = new Date(remoteItem.deletedAt || remoteItem.updatedAt || 0).getTime();
+            const localTime = new Date(localItem.deletedAt || localItem.updatedAt || 0).getTime();
+
+            if (remoteItem.deleted && remoteTime >= localTime) {
+                // Remote delete wins (or ties) over local → keep tombstone
+                merged.set(id, remoteItem);
+            } else if (localItem.deleted && localTime >= remoteTime) {
+                // Local delete wins → keep local tombstone (already set)
+            } else if (remoteTime > localTime) {
+                // Remote edit is newer than local → take remote version
                 merged.set(id, remoteItem);
             }
+            // else: local is newer or equal → keep local (already set)
         }
     });
 

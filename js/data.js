@@ -1,7 +1,12 @@
 // js/data.js - Local-first storage with per-trip support
 
-import { triggerSync } from './sync.js';
+import { triggerSync, registerCacheInvalidator } from './sync.js';
 import { getActiveTripId, getTripItemsKey } from './trip-registry.js';
+
+// Register our cache invalidator with the sync layer so that whenever sync
+// writes merged remote data straight to localStorage, our in-memory cache is
+// dropped and the next read reflects the fresh data.
+registerCacheInvalidator(clearItemsCache);
 
 // Initial dummy data for new trips
 const INITIAL_ITEMS = [
@@ -84,6 +89,10 @@ export function loadItemsFromLocalStorage() {
     const stored = localStorage.getItem(storageKey);
 
     if (stored) {
+        // Keep tombstones (deleted items) inside the cache so that a later
+        // save (append/update/delete) doesn't wipe them — sync.js needs them
+        // in storage to honour deletions across devices. Callers that display
+        // items get a tombstone-free view via loadVisibleItems().
         cachedItems = JSON.parse(stored);
     } else {
         // Initialize with default data for new trips
@@ -124,14 +133,23 @@ export function clearItemsCache() {
 }
 
 /**
- * Get all items for current trip
+ * Get visible (non-deleted) items for current trip.
+ * Tombstones are kept in storage/cache for sync but excluded from the UI.
  * @returns {Promise<Array>}
  */
 export async function batchGetLocalData() {
     return new Promise(resolve => {
         const items = loadItemsFromLocalStorage();
-        resolve([items]);
+        resolve([items.filter(item => !item.deleted)]);
     });
+}
+
+/**
+ * Get all visible items directly (no tombstones).
+ * @returns {Array}
+ */
+export function getAllItems() {
+    return loadItemsFromLocalStorage().filter(item => !item.deleted);
 }
 
 /**
@@ -193,7 +211,13 @@ export async function updateLocalRecord(idValue, updatedFields) {
 }
 
 /**
- * Delete an item by ID from current trip
+ * Delete an item by ID from current trip.
+ *
+ * Rather than physically removing the item, we mark it as a tombstone
+ * (deleted: true, deletedAt: <now>) and keep it in storage. This lets the
+ * sync merge layer honour the deletion against a stale remote copy of the
+ * item — otherwise the merge would just resurrect the item from the remote.
+ * Render functions filter out tombstones so they're invisible to the user.
  * @param {string} idValue
  * @returns {Promise<boolean>}
  */
@@ -205,12 +229,21 @@ export async function deleteLocalRecord(idValue) {
         );
 
         if (index !== -1) {
-            const deletedItem = items[index];
-            items.splice(index, 1);
+            const now = new Date().toISOString();
+            // Mark as tombstone (also bump updatedAt so LWW treats the delete
+            // as the newest version of this item).
+            const tombstone = {
+                ...items[index],
+                ItemID: items[index].ItemID || items[index].TaskID,
+                deleted: true,
+                deletedAt: now,
+                updatedAt: now,
+            };
+            items[index] = tombstone;
             saveItemsToLocalStorage(items);
 
             // Trigger sync in background
-            triggerSync('delete', deletedItem).catch(console.error);
+            triggerSync('delete', tombstone).catch(console.error);
 
             resolve(true);
         } else {
@@ -218,14 +251,6 @@ export async function deleteLocalRecord(idValue) {
             resolve(false);
         }
     });
-}
-
-/**
- * Get all items directly for current trip
- * @returns {Array}
- */
-export function getAllItems() {
-    return loadItemsFromLocalStorage();
 }
 
 /**

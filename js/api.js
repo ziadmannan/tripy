@@ -12,9 +12,16 @@ export class JsonBinApi {
     }
 
     _headers() {
+        // The key we hold is the trip owner's JSONBin Master Key (it's what
+        // createBin uses and what the Share modal exposes). A bin created with
+        // X-Master-Key is owned by that account and requires X-Master-Key to
+        // read/write — X-Access-Key only works for bins that have a dedicated
+        // access key configured, which this app never sets. Sending the key as
+        // X-Master-Key is what authorises both owners and people they've shared
+        // the key with.
         return {
             'Content-Type': 'application/json',
-            'X-Access-Key': this.accessKey,
+            'X-Master-Key': this.accessKey,
         };
     }
 
