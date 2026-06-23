@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shared Travel Itinerary PWA</title>
+    <!-- Tailwind CSS and DaisyUI via CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: var(--fallback-b2, oklch(var(--b2) / 1)); /* Global Layout Theme: Dark luxury background */
+        }
+    </style>
+    <!-- PWA manifest link (to be created) -->
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+    <div id="app" class="min-h-screen">
+        <!-- Header with trip title and sync status -->
+        <div class="flex justify-between items-center p-4">
+            <!-- Trip Selector Dropdown -->
+            <div class="dropdown dropdown-start">
+                <div tabindex="0" role="button" id="trip-selector-btn" class="flex items-center gap-2 btn btn-ghost px-2">
+                    <h1 id="current-trip-name" class="text-2xl sm:text-3xl font-bold text-primary truncate max-w-[200px] sm:max-w-[300px]">My Trip</h1>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-base-content-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                </div>
+                <ul tabindex="0" id="trip-dropdown" class="dropdown-content z-[100] menu p-2 shadow bg-base-100 rounded-box w-80 mt-2">
+                    <li class="menu-title"><span>Your Trips</span></li>
+                    <div id="trip-list-container"></div>
+                    <div class="divider my-1"></div>
+                    <li><button id="add-trip-btn" class="text-primary">+ Add New Trip</button></li>
+                    <li><button id="join-trip-link" class="text-primary">+ Join A Trip</button></li>
+                </ul>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button id="sync-status-btn" class="btn btn-ghost btn-sm gap-2" title="Sync Status">
+                    <span id="sync-indicator">💾</span>
+                    <span id="sync-text" class="hidden sm:inline">Local only</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Search and Filter Bar (Collapsible) -->
+        <div id="search-filter-container" class="px-4 pb-4 hidden">
+            <div class="flex gap-2 items-center">
+                <div class="relative flex-grow">
+                    <input type="text" id="search-input" placeholder="Search items..." class="input input-bordered w-full pl-10" />
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-base-content-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                </div>
+                <div class="flex gap-1 flex-shrink-0">
+                    <button id="filter-travel" class="btn btn-sm btn-circle" data-active="true" title="Show Travel">✈️</button>
+                    <button id="filter-accommodation" class="btn btn-sm btn-circle" data-active="true" title="Show Accommodation">🛏️</button>
+                    <button id="filter-activity" class="btn btn-sm btn-circle" data-active="true" title="Show Activity">🚶</button>
+                    <button id="filter-other" class="btn btn-sm btn-circle" data-active="true" title="Show Other">📋</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="app-content" class="min-h-screen p-4">
+            <div id="all-items" class="grid grid-cols-1 gap-4"></div>
+        </div>
+    </div>
+
+    <!-- Search FAB -->
+    <button id="search-fab" class="btn btn-secondary btn-circle fixed bottom-5 right-20 z-50 shadow-lg" title="Toggle Search">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+    </button>
+
+    <!-- FAB for adding tasks with type selection -->
+    <div class="fixed bottom-5 right-5 z-50 dropdown dropdown-top dropdown-end">
+        <div tabindex="0" role="button" id="add-item-fab" class="btn btn-primary btn-circle shadow-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+        </div>
+        <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
+            <li><button class="btn btn-ghost w-full justify-start" data-task-type="Travel">✈️ Add Travel</button></li>
+            <li><button class="btn btn-ghost w-full justify-start" data-task-type="Accommodation">🛏️ Add Accommodation</button></li>
+            <li><button class="btn btn-ghost w-full justify-start" data-task-type="Activity">🚶 Add Activity</button></li>
+            <li><button class="btn btn-ghost w-full justify-start" data-task-type="Other">📋 Add Other</button></li>
+        </ul>
+    </div>
+
+    <!-- Task Creation/Edit Modal -->
+    <dialog id="item_modal" class="modal">
+        <div class="modal-box max-w-2xl">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="font-bold text-lg" id="item-modal-title">Add New Item</h3>
+                <span id="item-modal-icon" class="text-3xl"></span>
+            </div>
+            <form id="item-form" method="dialog">
+                <div class="py-4 space-y-4">
+                    <label class="form-control w-full">
+                        <div class="label"><span class="label-text">Title</span></div>
+                        <input type="text" id="item-title" class="input input-bordered w-full" required />
+                    </label>
+                    <input type="hidden" id="item-type" value="Travel" />
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="form-control w-full">
+                            <div class="label"><span class="label-text">Start Date/Time</span></div>
+                            <input type="datetime-local" id="item-start-datetime" class="input input-bordered w-full" />
+                        </label>
+                        <label class="form-control w-full">
+                            <div class="label"><span class="label-text">End Date/Time</span></div>
+                            <input type="datetime-local" id="item-end-datetime" class="input input-bordered w-full" />
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="form-control w-full">
+                            <div class="label"><span class="label-text">From Location</span></div>
+                            <input type="text" id="item-from-location" class="input input-bordered w-full" />
+                        </label>
+                        <label class="form-control w-full">
+                            <div class="label"><span class="label-text">To Location</span></div>
+                            <input type="text" id="item-to-location" class="input input-bordered w-full" />
+                        </label>
+                    </div>
+                    <label class="form-control w-full">
+                        <div class="label"><span class="label-text">Notes (Markdown supported)</span></div>
+                        <textarea id="item-notes" class="textarea textarea-bordered h-48 w-full font-mono text-sm"></textarea>
+                    </label>
+                    <div class="form-control w-full">
+                        <div class="label"><span class="label-text">Preview</span></div>
+                        <div id="item-notes-preview" class="p-4 bg-base-200 rounded-lg min-h-[100px] prose prose-sm max-w-none"></div>
+                    </div>
+                </div>
+                <div class="modal-action">
+                    <button type="submit" class="btn btn-primary" id="save-item-button">Save Item</button>
+                    <button type="button" class="btn" onclick="item_modal.close()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <!-- Item Detail View Modal -->
+    <dialog id="item_detail_modal" class="modal">
+        <div class="modal-box max-w-2xl">
+            <div class="flex justify-between items-start mb-6">
+                <div class="flex items-center gap-3">
+                    <span id="detail-item-icon" class="text-4xl"></span>
+                    <h3 class="font-bold text-2xl" id="detail-item-title"></h3>
+                </div>
+                <button type="button" class="btn btn-circle btn-ghost btn-sm" onclick="item_detail_modal.close()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="py-4 space-y-6 text-base-content">
+                <!-- When Section -->
+                <div>
+                    <h4 class="text-sm font-semibold text-base-content-secondary mb-3 uppercase tracking-wide">When</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <div class="text-xs text-base-content-secondary mb-1">From</div>
+                            <div id="detail-start-datetime" class="font-medium"></div>
+                        </div>
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <div class="text-xs text-base-content-secondary mb-1">To</div>
+                            <div id="detail-end-datetime" class="font-medium"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Route Section -->
+                <div>
+                    <h4 class="text-sm font-semibold text-base-content-secondary mb-3 uppercase tracking-wide">Route</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <div class="text-xs text-base-content-secondary mb-1">From Location</div>
+                            <div id="detail-from-location" class="font-medium"></div>
+                        </div>
+                        <div class="bg-base-200 p-4 rounded-lg">
+                            <div class="text-xs text-base-content-secondary mb-1">To Location</div>
+                            <div id="detail-to-location" class="font-medium"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notes Section -->
+                <div>
+                    <h4 class="text-sm font-semibold text-base-content-secondary mb-3 uppercase tracking-wide">Notes</h4>
+                    <div id="detail-item-notes" class="bg-base-200 p-4 rounded-lg prose prose-sm max-w-none"></div>
+                </div>
+            </div>
+            <div class="modal-action">
+                <button type="button" class="btn btn-error" id="delete-from-detail-btn">Delete Item</button>
+                <button type="button" class="btn btn-warning" id="edit-from-detail-btn">Edit Item</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Sync Status Modal (shows current sync state + actions) -->
+    <dialog id="sync_modal" class="modal">
+        <div class="modal-box max-w-md">
+            <h3 class="font-bold text-lg mb-4">Sync Settings</h3>
+
+            <!-- Sync Status Display -->
+            <div id="sync-status-panel" class="bg-base-200 p-4 rounded-lg mb-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <span id="sync-modal-indicator" class="text-2xl">💾</span>
+                    <span id="sync-modal-status" class="font-medium">Local only</span>
+                </div>
+                <p id="sync-modal-last" class="text-sm text-base-content-secondary">Last sync: Never</p>
+            </div>
+
+            <!-- Connected Trip Info -->
+            <div id="sync-trip-info" class="hidden mb-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Trip Name</span></label>
+                    <input type="text" id="sync-trip-name" class="input input-bordered" readonly />
+                </div>
+                <div class="form-control mt-2">
+                    <label class="label"><span class="label-text">Bin ID</span></label>
+                    <div class="flex gap-2">
+                        <input type="text" id="sync-bin-id" class="input input-bordered flex-grow font-mono text-sm" readonly />
+                        <button id="copy-bin-id" class="btn btn-outline btn-square" title="Copy">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Not connected: show sync-to-jsonbin button -->
+            <div id="sync-setup-actions" class="space-y-2">
+                <button id="open-sync-to-jsonbin-btn" class="btn btn-primary w-full">Sync This Trip to JSONBin</button>
+            </div>
+
+            <!-- Connected Actions -->
+            <div id="sync-connected-actions" class="hidden space-y-2">
+                <button id="sync-now-btn" class="btn btn-primary w-full">Sync Now</button>
+                <button id="disconnect-btn" class="btn btn-error btn-outline w-full">Disconnect from Cloud</button>
+            </div>
+
+            <div class="modal-action mt-4">
+                <button type="button" class="btn" onclick="sync_modal.close()">Close</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Sync Trip to JSONBin Modal (create a new bin for current local trip) -->
+    <dialog id="sync_to_jsonbin_modal" class="modal">
+        <div class="modal-box max-w-md">
+            <h3 class="font-bold text-lg mb-2">Sync Trip to JSONBin</h3>
+            <p class="text-sm text-base-content-secondary mb-4">
+                Upload this local trip to a new JSONBin bin so you can share it with others.
+            </p>
+
+            <form id="sync-to-jsonbin-form" class="space-y-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Trip Name</span></label>
+                    <input type="text" id="sync-to-jsonbin-name" class="input input-bordered" placeholder="e.g., Paris 2026" required />
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Your JSONBin Master Key</span></label>
+                    <input type="password" id="sync-to-jsonbin-master-key" class="input input-bordered font-mono text-sm" placeholder="$2b$10$..." required />
+                    <label class="label"><span class="label-text-alt"><a href="https://jsonbin.io/app/app/api-keys" target="_blank" class="link">Get your Master Key from JSONBin →</a></span></label>
+                </div>
+
+                <div class="alert alert-info text-sm">
+                    <span>A new bin will be created using your Master Key. After this, you can share the Bin ID and Access Key with others.</span>
+                </div>
+
+                <div class="modal-action">
+                    <button type="submit" class="btn btn-primary">Create Bin & Sync</button>
+                    <button type="button" class="btn" onclick="sync_to_jsonbin_modal.close()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <!-- Join Trip Modal (connect to an existing shared bin) -->
+    <dialog id="join_trip_modal" class="modal">
+        <div class="modal-box max-w-md">
+            <h3 class="font-bold text-lg mb-2">Join A Trip</h3>
+            <p class="text-sm text-base-content-secondary mb-4">
+                Enter the JSONBin Bin ID and Access Key shared with you. The name you choose here is only for your local reference.
+            </p>
+
+            <form id="join-trip-form" class="space-y-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Local Trip Name (for your reference)</span></label>
+                    <input type="text" id="join-trip-name-input" class="input input-bordered" placeholder="e.g., Paris 2026 with Alice" />
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Bin ID</span></label>
+                    <input type="text" id="join-bin-id" class="input input-bordered font-mono text-sm" placeholder="xxxxxxxxxxxxxxxx" required />
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Access Key</span></label>
+                    <input type="password" id="join-access-key" class="input input-bordered font-mono text-sm" placeholder="$2b$10$..." required />
+                </div>
+                <button type="submit" class="btn btn-primary w-full">Connect to Trip</button>
+            </form>
+
+            <div class="modal-action mt-4">
+                <button type="button" class="btn" onclick="join_trip_modal.close()">Cancel</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Share Trip Modal (show bin ID + access key for sharing) -->
+    <dialog id="share_trip_modal" class="modal">
+        <div class="modal-box max-w-md">
+            <h3 class="font-bold text-lg mb-2">Share Trip</h3>
+            <p class="text-sm text-base-content-secondary mb-4">
+                Send the Bin ID and Access Key below to anyone you want to collaborate with. They can join the trip using these.
+            </p>
+
+            <div id="share-trip-unavailable" class="alert alert-warning text-sm hidden">
+                <span>This trip is not synced to JSONBin. Sync it to JSONBin first to share it with others.</span>
+            </div>
+
+            <div id="share-trip-content" class="space-y-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Bin ID</span></label>
+                    <div class="flex gap-2">
+                        <input type="text" id="share-bin-id" class="input input-bordered flex-grow font-mono text-sm" readonly />
+                        <button id="copy-share-bin-id" class="btn btn-outline btn-square" title="Copy Bin ID">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Access Key</span></label>
+                    <div class="flex gap-2">
+                        <input type="password" id="share-access-key" class="input input-bordered flex-grow font-mono text-sm" readonly />
+                        <button id="toggle-share-access-key" class="btn btn-outline btn-square" title="Show/Hide">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        </button>
+                        <button id="copy-share-access-key" class="btn btn-outline btn-square" title="Copy Access Key">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button id="copy-share-all" class="btn btn-primary w-full">Copy Both to Share</button>
+            </div>
+
+            <div class="modal-action mt-4">
+                <button type="button" class="btn" onclick="share_trip_modal.close()">Close</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Remote Deleted Warning Modal -->
+    <dialog id="remote_deleted_modal" class="modal">
+        <div class="modal-box max-w-md">
+            <h3 class="font-bold text-lg mb-2 text-warning">Trip No Longer Available Remotely</h3>
+            <p id="remote-deleted-message" class="text-sm mb-4">
+                This trip's JSONBin bin can no longer be reached. It may have been deleted from JSONBin. Your data is still available locally, but changes will not sync.
+            </p>
+            <p class="text-sm text-base-content-secondary mb-4">
+                You can continue using this trip locally, or sync it to a new JSONBin bin to store it remotely and share it with others again.
+            </p>
+
+            <div class="modal-action mt-4">
+                <button type="button" class="btn btn-primary" id="remote-deleted-resync-btn">Sync to New JSONBin</button>
+                <button type="button" class="btn" onclick="remote_deleted_modal.close()">Keep Local</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Add New Trip Modal -->
+    <dialog id="add_trip_modal" class="modal">
+        <div class="modal-box max-w-md">
+            <h3 class="font-bold text-lg mb-4">Add New Trip</h3>
+
+            <form id="add-trip-form" class="space-y-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Trip Name</span></label>
+                    <input type="text" id="new-trip-name" class="input input-bordered" placeholder="e.g., Summer Vacation 2026" required />
+                </div>
+
+                <div class="alert alert-info text-sm">
+                    <span>This creates a local trip. You can sync it to JSONBin later to share with others.</span>
+                </div>
+
+                <div class="modal-action">
+                    <button type="submit" class="btn btn-primary">Create Trip</button>
+                    <button type="button" class="btn" onclick="add_trip_modal.close()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <script type="module" src="./js/app.js"></script>
+</body>
+</html>
