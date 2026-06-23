@@ -71,6 +71,15 @@ function isSameDay(d1, d2) {
     return normalizeDate(d1).getTime() === normalizeDate(d2).getTime();
 }
 
+/**
+ * Check if a date is today
+ * @param {Date} date
+ * @returns {boolean}
+ */
+function isToday(date) {
+    return isSameDay(date, new Date());
+}
+
 function addDays(date, days) {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
@@ -168,8 +177,17 @@ function renderItems() {
 
                 if (itemsForThisDay.length > 0) {
                     const dateHeader = document.createElement('h4');
-                    dateHeader.className = 'text-xl font-bold mt-6 mb-2 text-primary';
+                    dateHeader.className = 'text-xl font-bold mt-6 mb-2 text-primary sticky z-30 bg-base-100 py-1';
+                    dateHeader.style.top = 'var(--sticky-header-offset, 0px)';
+                    dateHeader.dataset.date = currentDate.toISOString().slice(0, 10);
                     dateHeader.textContent = formatDateHeader(currentDate);
+
+                    // Highlight today's date header more prominently
+                    if (isToday(currentDate)) {
+                        dateHeader.classList.remove('text-primary');
+                        dateHeader.classList.add('text-primary-content', 'bg-primary', 'rounded-lg', 'px-3', 'shadow-md');
+                    }
+
                     allItemsContainer.appendChild(dateHeader);
 
                     const dayItemList = document.createElement('div');
@@ -188,7 +206,8 @@ function renderItems() {
         // Render items without dates under "Other Items" section
         if (itemsWithoutDates.length > 0) {
             const otherHeader = document.createElement('h4');
-            otherHeader.className = 'text-xl font-bold mt-8 mb-2 text-secondary';
+            otherHeader.className = 'text-xl font-bold mt-8 mb-2 text-secondary sticky z-30 bg-base-100 py-1';
+            otherHeader.style.top = 'var(--sticky-header-offset, 0px)';
             otherHeader.textContent = 'Other Items';
             allItemsContainer.appendChild(otherHeader);
 
@@ -204,6 +223,45 @@ function renderItems() {
 
         document.querySelectorAll('[data-item-id]').forEach(card => {
             card.addEventListener('click', (e) => viewItemDetails(e.currentTarget.dataset.itemId));
+        });
+
+        // If today is one of the rendered dates, scroll to it.
+        scrollToToday();
+    }
+}
+
+/**
+ * Measure the fixed header height and set a CSS variable so sticky date
+ * headers sit just beneath the header when scrolling.
+ */
+function updateStickyHeaderOffset() {
+    const header = document.querySelector('#app > div');
+    if (header) {
+        const offset = header.offsetHeight;
+        document.documentElement.style.setProperty('--sticky-header-offset', `${offset}px`);
+    }
+}
+
+/**
+ * On initial open, scroll the agenda to today's date header (if present).
+ * Only auto-scrolls once per app open, so user scrolling isn't overridden.
+ */
+let _hasScrolledToToday = false;
+function scrollToToday() {
+    if (_hasScrolledToToday) return;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const target = document.querySelector(`[data-date="${todayIso}"]`);
+    if (target) {
+        _hasScrolledToToday = true;
+        // Defer until layout settles
+        requestAnimationFrame(() => {
+            const header = document.querySelector('#app > div');
+            const headerHeight = header ? header.offsetHeight : 0;
+            const rect = target.getBoundingClientRect();
+            window.scrollTo({
+                top: window.scrollY + rect.top - headerHeight - 8,
+                behavior: 'auto',
+            });
         });
     }
 }
@@ -912,6 +970,10 @@ remoteDeletedResyncBtn.addEventListener('click', () => {
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('App.js loaded.');
+
+    // Measure sticky header offset now and on resize
+    updateStickyHeaderOffset();
+    window.addEventListener('resize', updateStickyHeaderOffset);
 
     // Initialize trips
     initializeTrips();

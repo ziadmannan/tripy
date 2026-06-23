@@ -17,8 +17,8 @@
 </head>
 <body>
     <div id="app" class="min-h-screen">
-        <!-- Header with trip title and sync status -->
-        <div class="flex justify-between items-center p-4">
+        <!-- Header with trip title and sync status (fixed to top) -->
+        <div class="flex justify-between items-center p-4 sticky top-0 z-50 bg-base-100/95 backdrop-blur border-b border-base-300">
             <!-- Trip Selector Dropdown -->
             <div class="dropdown dropdown-start">
                 <div tabindex="0" role="button" id="trip-selector-btn" class="flex items-center gap-2 btn btn-ghost px-2">
