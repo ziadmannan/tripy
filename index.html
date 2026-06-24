@@ -177,7 +177,7 @@
             </div>
             <div class="py-2 sm:py-4 space-y-4 sm:space-y-5 text-base-content">
                 <!-- When Section -->
-                <div>
+                <div id="detail-when-section">
                     <h4 class="text-xs sm:text-sm font-semibold text-base-content-secondary mb-2 sm:mb-3 uppercase tracking-wide">When</h4>
                     <div class="grid grid-cols-2 gap-2 sm:gap-4">
                         <div class="bg-base-200 p-3 sm:p-4 rounded-lg">
@@ -192,7 +192,7 @@
                 </div>
 
                 <!-- Route Section -->
-                <div>
+                <div id="detail-route-section">
                     <h4 class="text-xs sm:text-sm font-semibold text-base-content-secondary mb-2 sm:mb-3 uppercase tracking-wide">Route</h4>
                     <div class="grid grid-cols-2 gap-2 sm:gap-4">
                         <div class="bg-base-200 p-3 sm:p-4 rounded-lg">
@@ -378,6 +378,25 @@
 
             <div class="modal-action mt-4">
                 <button type="button" class="btn" onclick="share_trip_modal.close()">Close</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Rename Trip Modal -->
+    <dialog id="rename_trip_modal" class="modal">
+        <div class="modal-box max-w-md">
+            <h3 class="font-bold text-lg mb-4">Rename Trip</h3>
+
+            <form id="rename-trip-form" class="space-y-4">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Trip Name</span></label>
+                    <input type="text" id="rename-trip-input" class="input input-bordered w-full" placeholder="e.g., Paris Summer 2026" required />
+                </div>
+                <button type="submit" class="btn btn-primary w-full">Rename</button>
+            </form>
+
+            <div class="modal-action mt-4">
+                <button type="button" class="btn" onclick="rename_trip_modal.close()">Cancel</button>
             </div>
         </div>
     </dialog>

@@ -1,11 +1,15 @@
 // sw.js - Service worker for Tripy PWA
 //
+// Bump APP_VERSION whenever the app shell changes so that users who have
+// installed the PWA get served the new files (the SW detects the version
+// change, replaces the cache, and takes control of open tabs).
+//
 // Strategy: cache-first for the app shell (HTML, JS, CSS), network-first for
-// everything else. This makes the app installable AND lets it load offline
-// after the first visit. JSONBin API calls are never cached (they go to the
-// network, falling back to local data handled in app.js).
+// everything else. JSONBin API calls are never cached (they go to the network,
+// falling back to local data handled in app.js).
 
-const CACHE_NAME = 'tripy-v1';
+const APP_VERSION = 2;
+const CACHE_NAME = `tripy-v${APP_VERSION}`;
 const APP_SHELL = [
     './',
     './index.html',
@@ -23,41 +27,38 @@ self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => cache.addAll(APP_SHELL))
-            .then(() => self.skipWaiting())
+            .then(() => self.skipWaiting()) // Force the waiting SW to activate
             .catch((err) => console.warn('SW install: some assets failed to cache', err))
     );
 });
 
-// Activate: clean up old caches, take control immediately.
+// Activate: clean up old caches, take control immediately so the page
+// sees the new version without needing a second reload.
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys()
             .then((keys) => Promise.all(
                 keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
             ))
-            .then(() => self.clients.claim())
+            .then(() => self.clients.claim()) // Take control of open pages
     );
 });
 
-// Fetch: cache-first for our own assets, network-first for the rest.
+// Fetch: cache-first for same-origin assets, network-first for CDN.
 self.addEventListener('fetch', (event) => {
     const request = event.request;
-
-    // Only handle GET requests.
     if (request.method !== 'GET') return;
 
     const url = new URL(request.url);
 
-    // Never cache JSONBin API calls — always go to network (the app handles
-    // offline by falling back to localStorage).
+    // Never cache JSONBin API calls.
     if (url.hostname === 'api.jsonbin.io') return;
 
-    // Same-origin (our app shell): cache-first, fall back to network.
     if (url.origin === self.location.origin) {
+        // Cache-first for app shell
         event.respondWith(
             caches.match(request).then((cached) => {
                 return cached || fetch(request).then((response) => {
-                    // Cache a copy of newly fetched same-origin assets.
                     if (response && response.status === 200 && response.type === 'basic') {
                         const clone = response.clone();
                         caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
@@ -66,9 +67,8 @@ self.addEventListener('fetch', (event) => {
                 }).catch(() => cached);
             })
         );
-    }
-    // Cross-origin (Tailwind/DaisyUI CDNs): network-first, fall back to cache.
-    else {
+    } else {
+        // Network-first for CDN assets (Tailwind/DaisyUI)
         event.respondWith(
             fetch(request)
                 .then((response) => {

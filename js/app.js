@@ -533,6 +533,12 @@ const copyShareAllBtn = document.getElementById('copy-share-all');
 const remoteDeletedModal = document.getElementById('remote_deleted_modal');
 const remoteDeletedResyncBtn = document.getElementById('remote-deleted-resync-btn');
 
+// Rename trip modal elements
+const renameTripModal = document.getElementById('rename_trip_modal');
+const renameTripForm = document.getElementById('rename-trip-form');
+const renameTripInput = document.getElementById('rename-trip-input');
+let currentRenameTripId = null;
+
 // Item modals
 const addItemFab = document.getElementById('add-item-fab');
 const itemModal = document.getElementById('item_modal');
@@ -636,6 +642,17 @@ function updateTripDropdown() {
             });
             rightSide.appendChild(shareBtn);
         }
+
+        // Rename icon (pencil) - rename trip locally
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'btn btn-ghost btn-xs btn-square opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-warning';
+        renameBtn.title = 'Rename trip';
+        renameBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>';
+        renameBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openRenameModal(trip.id, trip.name);
+        });
+        rightSide.appendChild(renameBtn);
 
         // Delete icon (dustbin) - local only deletion
         const deleteBtn = document.createElement('button');
@@ -934,6 +951,37 @@ document.getElementById('copy-bin-id').addEventListener('click', () => {
 
 // --- Share modal ---
 
+// --- Rename modal ---
+
+function openRenameModal(tripId, currentName) {
+    currentRenameTripId = tripId;
+    renameTripInput.value = currentName;
+
+    // Close the trip dropdown
+    tripSelectorBtn.blur();
+    document.activeElement?.blur();
+
+    renameTripModal.showModal();
+    // Focus and select the name for easy replacement
+    renameTripInput.focus();
+    renameTripInput.select();
+}
+
+renameTripForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const newName = renameTripInput.value.trim();
+    if (!newName || !currentRenameTripId) return;
+
+    updateTrip(currentRenameTripId, { name: newName });
+    updateTripDropdown();
+    updateSyncDisplay();
+    renameTripModal.close();
+    window.app.updateStatus(`Trip renamed to "${newName}"`);
+    currentRenameTripId = null;
+});
+
+// --- Share modal
+
 function openShareModal(tripId) {
     const trip = getAllTrips().find(t => t.id === tripId);
     if (!trip) return;
@@ -973,9 +1021,16 @@ toggleShareAccessKeyBtn.addEventListener('click', () => {
 });
 
 copyShareAllBtn.addEventListener('click', () => {
-    const text = `Join my trip on Tripy!\n\nBin ID: ${shareBinId.value}\nMaster Key: ${shareAccessKey.value}`;
+    const trip = getActiveTrip();
+    const tripName = trip ? trip.name : 'Shared Trip';
+    const binId = shareBinId.value;
+    const accessKey = shareAccessKey.value;
+    // Build a deep link URL — when opened, the app reads the query params
+    // and pre-fills the Join Trip modal.
+    const url = `${window.location.origin}${window.location.pathname}?joinName=${encodeURIComponent(tripName)}&joinBin=${encodeURIComponent(binId)}&joinKey=${encodeURIComponent(accessKey)}`;
+    const text = `Join my trip "${tripName}" on Tripy!\n\nBin ID: ${binId}\nMaster Key: ${accessKey}\n\nOr click this link to join directly:\n${url}`;
     navigator.clipboard.writeText(text).then(() => {
-        window.app.updateStatus('Trip details copied! Paste and send to someone.');
+        window.app.updateStatus('Trip details + link copied!');
     });
 });
 
@@ -1022,6 +1077,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     fetchAndRenderData();
+
+    // --- Deep-link join: check for ?joinBin=...&joinKey=... in the URL ---
+    (function checkJoinParams() {
+        const params = new URLSearchParams(window.location.search);
+        const joinBin = params.get('joinBin');
+        const joinKey = params.get('joinKey');
+        const joinName = params.get('joinName');
+        if (joinBin && joinKey) {
+            joinBinId.value = joinBin;
+            joinAccessKey.value = joinKey;
+            if (joinName) joinTripNameInput.value = joinName;
+            // Open join modal pre-filled. The user just hits Connect.
+            joinTripModal.showModal();
+        }
+    })();
 
     // --- PWA install prompt ---
     // Capture the browser's install prompt and surface an Install button.
@@ -1112,11 +1182,43 @@ document.addEventListener('DOMContentLoaded', () => {
     // Only target buttons in the FAB dropdown (buttons with data-task-type)
     // Toggle extra fields (End Date/Time, To Location)
     toggleExtraFieldsBtn.addEventListener('click', () => {
+        const wasHidden = extraFieldsContainer.classList.contains('hidden');
         extraFieldsContainer.classList.toggle('hidden');
         toggleExtraFieldsBtn.textContent = extraFieldsContainer.classList.contains('hidden')
             ? '+ Add End Date/Time & To Location'
             : '− Hide extra fields';
+
+        // If expanding and a start datetime is set but end is empty, copy start to end
+        if (wasHidden) {
+            const startInput = document.getElementById('item-start-datetime');
+            const endInput = document.getElementById('item-end-datetime');
+            if (startInput.value && !endInput.value) {
+                endInput.value = startInput.value;
+            }
+        }
     });
+
+    // Snap any datetime-local value to the nearest 5-minute mark when the user
+    // finishes picking or blurs the field (some browsers ignore step="300" and
+    // let users pick any minute).
+    function snapToFiveMinutes(input) {
+        input.addEventListener('blur', () => {
+            if (!input.value) return;
+            const d = new Date(input.value);
+            if (isNaN(d.getTime())) return;
+            d.setMinutes(Math.round(d.getMinutes() / 5) * 5, 0, 0);
+            const iso = d.toISOString();
+            // Set the value back as "yyyy-MM-ddTHH:MM" (local time).
+            const y = iso.slice(0, 4);
+            const m = iso.slice(5, 7);
+            const day = iso.slice(8, 10);
+            const h = iso.slice(11, 13);
+            const min = iso.slice(14, 16);
+            input.value = `${y}-${m}-${day}T${h}:${min}`;
+        });
+    }
+    snapToFiveMinutes(document.getElementById('item-start-datetime'));
+    snapToFiveMinutes(document.getElementById('item-end-datetime'));
 
     document.querySelectorAll('.dropdown-content button[data-task-type]').forEach(button => {
         button.addEventListener('click', (e) => {
@@ -1133,16 +1235,8 @@ document.addEventListener('DOMContentLoaded', () => {
             extraFieldsContainer.classList.add('hidden');
             toggleExtraFieldsBtn.textContent = '+ Add End Date/Time & To Location';
 
-            // Only set default dates for non-Other items (default: next noon)
-            if (itemType !== 'Other') {
-                const nextNoon = new Date();
-                nextNoon.setDate(nextNoon.getDate() + 1);
-                nextNoon.setHours(12, 0, 0, 0);
-                const defaultISO = nextNoon.toISOString().substring(0, 16);
-                document.getElementById('item-start-datetime').value = defaultISO;
-                document.getElementById('item-end-datetime').value = '';
-            }
-
+            // No default date is set — all item types can be created without
+            // a date. The user fills in the date only if they know it.
             itemTypeSelect.value = itemType;
 
             saveItemButton.textContent = 'Save Item';
@@ -1261,18 +1355,34 @@ function viewItemDetails(itemId) {
     currentDetailItemId = itemId;
     const item = allItems.find(t => (t.ItemID || t.TaskID) === itemId);
     if (item) {
+        const whenSection = document.getElementById('detail-when-section');
+        const routeSection = document.getElementById('detail-route-section');
+
         detailItemTitle.textContent = item.Title;
         detailItemIcon.textContent = getItemIcon(item.Type);
 
-        detailStartDatetime.textContent = formatDateTimeForDisplay(item.StartDateTime);
-        detailEndDatetime.textContent = formatDateTimeForDisplay(item.EndDateTime);
+        // Show/hide the "When" section based on whether the item has dates
+        const hasDates = !!item.StartDateTime || !!item.EndDateTime;
+        if (hasDates) {
+            whenSection.classList.remove('hidden');
+            detailStartDatetime.textContent = formatDateTimeForDisplay(item.StartDateTime);
+            detailEndDatetime.textContent = formatDateTimeForDisplay(item.EndDateTime);
+        } else {
+            whenSection.classList.add('hidden');
+        }
 
-        // Set plain-text from/to (no longer clickable links)
-        detailFromLocation.textContent = item.FromLocation || '—';
-        detailToLocation.textContent = item.ToLocation || '—';
-
-        // Show maps preview in an iframe
-        updateMapsPreview(item.FromLocation, item.ToLocation);
+        // Show/hide the "Route" section based on whether either location is set
+        const hasFrom = !!item.FromLocation;
+        const hasTo = !!item.ToLocation;
+        if (hasFrom || hasTo) {
+            routeSection.classList.remove('hidden');
+            detailFromLocation.textContent = item.FromLocation || '—';
+            detailToLocation.textContent = item.ToLocation || '—';
+            updateMapsPreview(item.FromLocation, item.ToLocation);
+        } else {
+            routeSection.classList.add('hidden');
+            document.getElementById('maps-preview-container').classList.add('hidden');
+        }
 
         detailItemNotes.innerHTML = generateMarkdownPreview(item.Notes);
 
