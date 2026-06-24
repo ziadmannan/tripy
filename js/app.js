@@ -177,7 +177,7 @@ function renderItems() {
 
                 if (itemsForThisDay.length > 0) {
                     const dateHeader = document.createElement('h4');
-                    dateHeader.className = 'text-xl font-bold mt-6 mb-2 text-primary sticky z-30 bg-base-100 py-1';
+                    dateHeader.className = 'text-xl font-bold mt-4 mb-1 text-primary sticky z-30 bg-base-100 py-1';
                     dateHeader.style.top = 'var(--sticky-header-offset, 0px)';
                     dateHeader.dataset.date = currentDate.toISOString().slice(0, 10);
                     dateHeader.textContent = formatDateHeader(currentDate);
@@ -191,7 +191,7 @@ function renderItems() {
                     allItemsContainer.appendChild(dateHeader);
 
                     const dayItemList = document.createElement('div');
-                    dayItemList.className = 'space-y-2';
+                    dayItemList.className = 'space-y-1 sm:space-y-1.5';
 
                     itemsForThisDay.forEach(item => {
                         const itemCard = createItemCard(item);
@@ -206,7 +206,7 @@ function renderItems() {
         // Render items without dates under "Other Items" section
         if (itemsWithoutDates.length > 0) {
             const otherHeader = document.createElement('h4');
-            otherHeader.className = 'text-xl font-bold mt-8 mb-2 text-secondary sticky z-30 bg-base-100 py-1';
+            otherHeader.className = 'text-xl font-bold mt-6 mb-1 text-secondary sticky z-30 bg-base-100 py-1';
             otherHeader.style.top = 'var(--sticky-header-offset, 0px)';
             otherHeader.textContent = 'Other Items';
             allItemsContainer.appendChild(otherHeader);
@@ -274,10 +274,10 @@ function createItemCard(item) {
 
     const isAccommodation = item.Type === 'Accommodation';
     const isOther = item.Type === 'Other';
-    const cardPadding = isAccommodation ? 'py-0.5 px-2' : 'p-3';
-    const titleSize = isAccommodation ? 'text-xs' : 'text-base';
-    const iconSize = isAccommodation ? 'text-base' : 'text-xl';
-    const iconMargin = isAccommodation ? 'mr-2' : 'mr-3';
+    const cardPadding = isAccommodation ? 'py-0.5 px-2' : 'p-2 sm:p-3';
+    const titleSize = isAccommodation ? 'text-xs' : 'text-sm sm:text-base';
+    const iconSize = isAccommodation ? 'text-base' : 'text-lg sm:text-xl';
+    const iconMargin = isAccommodation ? 'mr-2' : 'mr-2 sm:mr-3';
 
     // Show time range for items with dates, except Accommodation
     let timeDisplay = '';
@@ -543,6 +543,8 @@ const saveItemButton = document.getElementById('save-item-button');
 const itemTypeSelect = document.getElementById('item-type');
 const itemNotesInput = document.getElementById('item-notes');
 const itemNotesPreview = document.getElementById('item-notes-preview');
+const extraFieldsContainer = document.getElementById('extra-fields-container');
+const toggleExtraFieldsBtn = document.getElementById('toggle-extra-fields-btn');
 
 const itemDetailModal = document.getElementById('item_detail_modal');
 const detailItemTitle = document.getElementById('detail-item-title');
@@ -1108,6 +1110,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Only target buttons in the FAB dropdown (buttons with data-task-type)
+    // Toggle extra fields (End Date/Time, To Location)
+    toggleExtraFieldsBtn.addEventListener('click', () => {
+        extraFieldsContainer.classList.toggle('hidden');
+        toggleExtraFieldsBtn.textContent = extraFieldsContainer.classList.contains('hidden')
+            ? '+ Add End Date/Time & To Location'
+            : '− Hide extra fields';
+    });
+
     document.querySelectorAll('.dropdown-content button[data-task-type]').forEach(button => {
         button.addEventListener('click', (e) => {
             const itemType = e.target.dataset.taskType;
@@ -1119,13 +1129,18 @@ document.addEventListener('DOMContentLoaded', () => {
             itemForm.reset();
             itemNotesPreview.innerHTML = '<em class="text-base-content-secondary">No notes</em>';
 
-            // Only set default dates for non-Other items
+            // Hide extra fields for a fresh add
+            extraFieldsContainer.classList.add('hidden');
+            toggleExtraFieldsBtn.textContent = '+ Add End Date/Time & To Location';
+
+            // Only set default dates for non-Other items (default: next noon)
             if (itemType !== 'Other') {
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                const tomorrowISO = tomorrow.toISOString().substring(0, 16);
-                document.getElementById('item-start-datetime').value = tomorrowISO;
-                document.getElementById('item-end-datetime').value = tomorrowISO;
+                const nextNoon = new Date();
+                nextNoon.setDate(nextNoon.getDate() + 1);
+                nextNoon.setHours(12, 0, 0, 0);
+                const defaultISO = nextNoon.toISOString().substring(0, 16);
+                document.getElementById('item-start-datetime').value = defaultISO;
+                document.getElementById('item-end-datetime').value = '';
             }
 
             itemTypeSelect.value = itemType;
@@ -1281,6 +1296,17 @@ function openItemModalForEdit(itemId) {
         document.getElementById('item-from-location').value = item.FromLocation;
         document.getElementById('item-to-location').value = item.ToLocation;
         document.getElementById('item-notes').value = item.Notes;
+
+        // Show extra fields if the item has end datetime or to location filled
+        const hasEndDate = !!item.EndDateTime;
+        const hasToLocation = !!item.ToLocation;
+        if (hasEndDate || hasToLocation) {
+            extraFieldsContainer.classList.remove('hidden');
+            toggleExtraFieldsBtn.textContent = '− Hide extra fields';
+        } else {
+            extraFieldsContainer.classList.add('hidden');
+            toggleExtraFieldsBtn.textContent = '+ Add End Date/Time & To Location';
+        }
 
         itemNotesPreview.innerHTML = generateMarkdownPreview(item.Notes);
 
