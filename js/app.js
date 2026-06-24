@@ -439,19 +439,41 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function createGoogleMapsLink(location, otherLocation = null, isOrigin = false) {
-    if (!location || location === '—') return '—';
+function updateMapsPreview(from, to) {
+    const container = document.getElementById('maps-preview-container');
+    const iframe = document.getElementById('maps-embed-iframe');
+    const openLink = document.getElementById('maps-open-link');
 
-    // If both locations are provided, create a directions link
-    if (otherLocation && otherLocation !== '—') {
-        const from = isOrigin ? encodeURIComponent(location) : encodeURIComponent(otherLocation);
-        const to = isOrigin ? encodeURIComponent(otherLocation) : encodeURIComponent(location);
-        return `<a href="https://www.google.com/maps/dir/?api=1&origin=${from}&destination=${to}" target="_blank" rel="noopener noreferrer" class="link link-primary hover:underline">${location}</a>`;
+    const hasFrom = from && from !== '' && from !== '—';
+    const hasTo = to && to !== '' && to !== '—';
+
+    if (!hasFrom && !hasTo) {
+        container.classList.add('hidden');
+        return;
     }
 
-    // Single location search
-    const encoded = encodeURIComponent(location);
-    return `<a href="https://www.google.com/maps/search/?api=1&query=${encoded}" target="_blank" rel="noopener noreferrer" class="link link-primary hover:underline">${location}</a>`;
+    container.classList.remove('hidden');
+
+    let embedUrl;
+    let openUrl;
+
+    if (hasFrom && hasTo) {
+        // Directions — use the "from X to Y" search format. Google Maps
+        // auto-fits the viewport to show both locations (no zoom param
+        // since a fixed zoom can't guarantee both are visible).
+        const query = encodeURIComponent(`from ${from} to ${to}`);
+        embedUrl = `https://maps.google.com/maps?q=${query}&output=embed`;
+        openUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}`;
+    } else {
+        // Single location
+        const loc = hasFrom ? from : to;
+        const encoded = encodeURIComponent(loc);
+        embedUrl = `https://maps.google.com/maps?q=${encoded}&output=embed&z=12`;
+        openUrl = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
+    }
+
+    iframe.src = embedUrl;
+    openLink.href = openUrl;
 }
 
 // Trip UI elements
@@ -1155,6 +1177,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Clear the maps iframe when the detail modal closes so stale views
+    // don't flash before the next item's map loads.
+    itemDetailModal.addEventListener('close', () => {
+        document.getElementById('maps-embed-iframe').src = '';
+    });
+
     deleteFromDetailButton.addEventListener('click', async () => {
         if (currentDetailItemId) {
             const confirmed = confirm('Are you sure you want to delete this item? This action cannot be undone.');
@@ -1224,8 +1252,12 @@ function viewItemDetails(itemId) {
         detailStartDatetime.textContent = formatDateTimeForDisplay(item.StartDateTime);
         detailEndDatetime.textContent = formatDateTimeForDisplay(item.EndDateTime);
 
-        detailFromLocation.innerHTML = createGoogleMapsLink(item.FromLocation, item.ToLocation, true);
-        detailToLocation.innerHTML = createGoogleMapsLink(item.ToLocation, item.FromLocation, false);
+        // Set plain-text from/to (no longer clickable links)
+        detailFromLocation.textContent = item.FromLocation || '—';
+        detailToLocation.textContent = item.ToLocation || '—';
+
+        // Show maps preview in an iframe
+        updateMapsPreview(item.FromLocation, item.ToLocation);
 
         detailItemNotes.innerHTML = generateMarkdownPreview(item.Notes);
 
