@@ -468,6 +468,10 @@ const newTripNameInput = document.getElementById('new-trip-name');
 const syncStatusBtn = document.getElementById('sync-status-btn');
 const syncIndicator = document.getElementById('sync-indicator');
 const syncText = document.getElementById('sync-text');
+
+// Install-app button (PWA install prompt)
+const installAppBtn = document.getElementById('install-app-btn');
+let deferredInstallPrompt = null;
 const syncModal = document.getElementById('sync_modal');
 const syncModalIndicator = document.getElementById('sync-modal-indicator');
 const syncModalStatus = document.getElementById('sync-modal-status');
@@ -994,6 +998,39 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     fetchAndRenderData();
+
+    // --- PWA install prompt ---
+    // Capture the browser's install prompt and surface an Install button.
+    // (Chrome/Edge/Android fire beforeinstallprompt; iOS Safari uses the
+    // Share → Add to Home Screen flow and won't fire this, but the manifest
+    // + apple-touch-icon above still make it installable there.)
+    window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent the default mini-infobar so we can show our own button.
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        installAppBtn.classList.remove('hidden');
+    });
+
+    installAppBtn.addEventListener('click', async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+            window.app.updateStatus('Tripy installed!');
+        }
+        deferredInstallPrompt = null;
+        installAppBtn.classList.add('hidden');
+    });
+
+    // If the app is already installed (running standalone), hide the button.
+    window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = null;
+        installAppBtn.classList.add('hidden');
+    });
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+        installAppBtn.classList.add('hidden');
+    }
 
     // --- Auto-sync: pull collaborators' changes in the background ---
     // A manual sync reads remote + merges + writes back, but only a reload

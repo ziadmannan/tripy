@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shared Travel Itinerary PWA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Tripy — Shared Travel Planner</title>
     <!-- Tailwind CSS and DaisyUI via CDN -->
     <link href="https://cdn.jsdelivr.net/npm/daisyui@latest/dist/full.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
@@ -12,8 +12,18 @@
             background-color: var(--fallback-b2, oklch(var(--b2) / 1)); /* Global Layout Theme: Dark luxury background */
         }
     </style>
-    <!-- PWA manifest link (to be created) -->
-    <link rel="manifest" href="/manifest.json">
+
+    <!-- PWA -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#1e3a8a">
+    <!-- iOS: allow standalone install + use the icon on the home screen -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tripy">
+    <link rel="apple-touch-icon" href="./icons/icon.svg">
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
 </head>
 <body>
     <div id="app" class="min-h-screen">
@@ -38,6 +48,11 @@
                 <button id="sync-status-btn" class="btn btn-ghost btn-sm gap-2" title="Sync Status">
                     <span id="sync-indicator">💾</span>
                     <span id="sync-text" class="hidden sm:inline">Local only</span>
+                </button>
+                <!-- Install app button (shown only when the browser offers install) -->
+                <button id="install-app-btn" class="btn btn-primary btn-sm gap-2 hidden" title="Install Tripy as an app">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                    <span class="hidden sm:inline">Install</span>
                 </button>
             </div>
         </div>
@@ -383,5 +398,16 @@
     </dialog>
 
     <script type="module" src="./js/app.js"></script>
+
+    <!-- Register the service worker for installability + offline support -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((reg) => console.log('SW registered:', reg.scope))
+                    .catch((err) => console.warn('SW registration failed:', err));
+            });
+        }
+    </script>
 </body>
 </html>
