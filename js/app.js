@@ -177,7 +177,7 @@ function renderItems() {
 
                 if (itemsForThisDay.length > 0) {
                     const dateHeader = document.createElement('h4');
-                    dateHeader.className = 'text-xl font-bold mt-4 mb-1 text-primary sticky z-30 bg-base-100 py-1';
+                    dateHeader.className = 'text-xl font-bold mt-4 mb-1 text-primary sticky z-20 bg-base-100 py-1';
                     dateHeader.style.top = 'var(--sticky-header-offset, 0px)';
                     dateHeader.dataset.date = currentDate.toISOString().slice(0, 10);
                     dateHeader.textContent = formatDateHeader(currentDate);
@@ -206,7 +206,7 @@ function renderItems() {
         // Render items without dates under "Other Items" section
         if (itemsWithoutDates.length > 0) {
             const otherHeader = document.createElement('h4');
-            otherHeader.className = 'text-xl font-bold mt-6 mb-1 text-secondary sticky z-30 bg-base-100 py-1';
+            otherHeader.className = 'text-xl font-bold mt-6 mb-1 text-secondary sticky z-20 bg-base-100 py-1';
             otherHeader.style.top = 'var(--sticky-header-offset, 0px)';
             otherHeader.textContent = 'Other Items';
             allItemsContainer.appendChild(otherHeader);
@@ -227,11 +227,142 @@ function renderItems() {
 
         // If today is one of the rendered dates, scroll to it.
         scrollToToday();
+        // Update calendar strip whenever items are rendered.
+        renderCalendar();
     }
 }
 
-/**
- * Measure the fixed header height and set a CSS variable so sticky date
+/** Build the 7-column calendar strip showing the trip's date range. */
+function renderCalendar() {
+    const grid = document.getElementById('calendar-grid');
+    if (!grid) return;
+
+    const itemsWithDates = allItems.filter(item => {
+        if (item.Type === 'Travel' && !filterState.showTravel) return false;
+        if (item.Type === 'Accommodation' && !filterState.showAccommodation) return false;
+        if (item.Type === 'Activity' && !filterState.showActivity) return false;
+        if (item.Type === 'Other' && !filterState.showOther) return false;
+        if (filterState.searchTerm) {
+            const titleMatch = item.Title && item.Title.toLowerCase().includes(filterState.searchTerm);
+            if (!titleMatch) return false;
+        }
+        return !!item.StartDateTime;
+    });
+
+    if (itemsWithDates.length === 0) {
+        grid.innerHTML = '<p class="text-sm text-base-content-secondary w-full text-center py-2">No dated items to show</p>';
+        return;
+    }
+
+    // Compute the full range (minDate → maxDate) from filtered items.
+    // Start from a far-future sentinel so the first item always sets minDate.
+    let minDate = new Date(8640000000000000);
+    let maxDate = new Date(-8640000000000000);
+    itemsWithDates.forEach(item => {
+        const start = normalizeDate(item.StartDateTime);
+        const end = normalizeDate(item.EndDateTime || item.StartDateTime);
+        if (start < minDate) minDate = start;
+        if (end > maxDate) maxDate = end;
+    });
+
+    // Build a map: date-iso → Set<type>
+    const dateTypes = new Map();
+    itemsWithDates.forEach(item => {
+        const start = normalizeDate(item.StartDateTime);
+        const end = normalizeDate(item.EndDateTime || item.StartDateTime);
+        let cursor = new Date(start);
+        while (cursor <= end) {
+            const key = cursor.toISOString().slice(0, 10);
+            if (!dateTypes.has(key)) dateTypes.set(key, new Set());
+            dateTypes.get(key).add(item.Type);
+            cursor = addDays(cursor, 1);
+        }
+    });
+
+    const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+    const now = new Date();
+    const todayKey = now.toISOString().slice(0, 10);
+
+    grid.innerHTML = '';
+    let cursor = new Date(minDate);
+    while (cursor <= maxDate) {
+        const key = cursor.toISOString().slice(0, 10);
+        const types = dateTypes.get(key);
+        const isToday = key === todayKey;
+        const dow = cursor.getDay(); // 0=Sun, 6=Sat
+        const isWeekend = dow === 0 || dow === 6;
+
+        const cell = document.createElement('div');
+        let cellClass = 'flex-shrink-0 flex flex-col items-center gap-0 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-base-200 transition-colors'
+            + (isToday ? ' bg-primary text-primary-content shadow-sm' : '')
+            + (isWeekend && !isToday ? ' opacity-70' : '');
+        cell.className = cellClass;
+
+        // Day letter: Mo, Tu, We, Th, Fr, Sa, Su
+        const dayLetter = document.createElement('span');
+        dayLetter.className = 'text-[10px] leading-tight font-medium'
+            + (isToday ? ' text-primary-content' : isWeekend ? ' text-base-content-secondary' : ' text-base-content-tertiary');
+        dayLetter.textContent = DAY_NAMES[dow];
+        cell.appendChild(dayLetter);
+
+        // Date label: "d/m" e.g. "14/7"
+        const label = document.createElement('span');
+        label.className = 'text-xs font-semibold leading-tight' + (isToday ? '' : ' text-base-content');
+        label.textContent = `${cursor.getDate()}/${cursor.getMonth() + 1}`;
+        cell.appendChild(label);
+
+        // Type icons row (max 4 icons to keep it compact)
+        if (types && types.size > 0) {
+            const iconsRow = document.createElement('div');
+            iconsRow.className = 'flex gap-0.5 text-xs leading-none mt-0.5';
+            const sorted = ['Travel', 'Accommodation', 'Activity', 'Other'];
+            sorted.forEach(t => {
+                if (types.has(t)) {
+                    const iconSpan = document.createElement('span');
+                    iconSpan.textContent = getItemIcon(t);
+                    iconsRow.appendChild(iconSpan);
+                }
+            });
+            cell.appendChild(iconsRow);
+        } else {
+            // Placeholder for consistent cell height
+            const placeholder = document.createElement('div');
+            placeholder.className = 'text-xs leading-none invisible mt-0.5';
+            placeholder.textContent = '·';
+            cell.appendChild(placeholder);
+        }
+
+        // Click scrolls the agenda to this date
+        cell.dataset.date = key;
+        cell.addEventListener('click', () => {
+            // Close the calendar if it was opened on mobile
+            scrollToDate(key);
+        });
+
+        grid.appendChild(cell);
+        cursor = addDays(cursor, 1);
+    }
+}
+
+/** Scroll the agenda to the date header matching the given ISO date. */
+function scrollToDate(isoDate) {
+    const target = document.querySelector(`[data-date="${isoDate}"]`);
+    if (!target) return;
+    const stickyOffset = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--sticky-header-offset')
+    ) || 0;
+    // Insert a plain (non-sticky) marker before the target, scroll it into
+    // view with scroll-margin-top matching the sticky zone, then remove the
+    // marker. This avoids all the positioning quirks of sticky elements.
+    const marker = document.createElement('div');
+    marker.style.height = '1px';
+    marker.style.scrollMarginTop = stickyOffset + 'px';
+    target.parentNode.insertBefore(marker, target);
+    marker.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => marker.remove(), 800);
+}
+
+/** Measure the fixed header height and set a CSS variable so sticky date
  * headers sit just beneath the header when scrolling.
  */
 function updateStickyHeaderOffset() {
@@ -260,15 +391,16 @@ function scrollToToday() {
     const target = document.querySelector(`[data-date="${todayIso}"]`);
     if (target) {
         _hasScrolledToToday = true;
-        // Defer until layout settles
+        const stickyOffset = parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue('--sticky-header-offset')
+        ) || 0;
+        const marker = document.createElement('div');
+        marker.style.height = '1px';
+        marker.style.scrollMarginTop = stickyOffset + 'px';
+        target.parentNode.insertBefore(marker, target);
         requestAnimationFrame(() => {
-            const header = document.querySelector('#app > div');
-            const headerHeight = header ? header.offsetHeight : 0;
-            const rect = target.getBoundingClientRect();
-            window.scrollTo({
-                top: window.scrollY + rect.top - headerHeight - 8,
-                behavior: 'auto',
-            });
+            marker.scrollIntoView({ behavior: 'auto', block: 'start' });
+            setTimeout(() => marker.remove(), 100);
         });
     }
 }
@@ -1359,7 +1491,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Recalculate sticky offsets now that search bar visibility changed
         updateStickyHeaderOffset();
     });
-});
+
+    });
 
 function viewItemDetails(itemId) {
     currentDetailItemId = itemId;

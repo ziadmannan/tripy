@@ -46,7 +46,7 @@
                 </ul>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1 sm:gap-2">
                 <button id="sync-status-btn" class="btn btn-ghost btn-sm gap-2" title="Sync Status">
                     <span id="sync-indicator">💾</span>
                     <span id="sync-text" class="hidden sm:inline">Local only</span>
@@ -75,18 +75,23 @@
             </div>
         </div>
 
-        <div id="app-content" class="min-h-screen p-3 sm:p-4 bg-base-100">
+        <div id="app-content" class="min-h-screen p-3 sm:p-4 pb-20 bg-base-100">
             <div id="all-items" class="grid grid-cols-1 gap-3 sm:gap-4"></div>
         </div>
     </div>
 
+    <!-- Calendar Strip (Fixed at bottom) -->
+    <div id="calendar-container" class="fixed bottom-0 left-0 right-0 z-40 px-4 pt-2 pb-2 bg-base-100 border-t border-base-300 shadow-lg">
+        <div id="calendar-grid" class="flex gap-0 overflow-x-auto" style="scrollbar-width: thin;"></div>
+    </div>
+
     <!-- Search FAB -->
-    <button id="search-fab" class="btn btn-secondary btn-circle fixed bottom-5 right-20 z-50 shadow-lg" title="Toggle Search">
+    <button id="search-fab" class="btn btn-secondary btn-circle fixed bottom-20 right-20 z-50 shadow-lg" title="Toggle Search">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
     </button>
 
     <!-- FAB for adding tasks with type selection -->
-    <div class="fixed bottom-5 right-5 z-50 dropdown dropdown-top dropdown-end">
+    <div class="fixed bottom-20 right-5 z-50 dropdown dropdown-top dropdown-end">
         <div tabindex="0" role="button" id="add-item-fab" class="btn btn-primary btn-circle shadow-lg">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
         </div>
@@ -447,10 +452,15 @@
     <!-- Register the service worker for installability + offline support -->
     <script>
         if ('serviceWorker' in navigator) {
+            // Unregister any previously installed service workers to avoid
+            // serving stale cached files from a previous version.
+            navigator.serviceWorker.getRegistrations().then(regs => {
+                regs.forEach(reg => reg.unregister());
+            });
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
                     .then((reg) => console.log('SW registered:', reg.scope))
-                    .catch((err) => console.warn('SW registration failed:', err));
+                    .catch((err) => console.warn('SW registration skipped (expected when serving locally):', err.message));
             });
         }
     </script>
