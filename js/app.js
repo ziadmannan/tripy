@@ -237,8 +237,15 @@ function renderItems() {
 function updateStickyHeaderOffset() {
     const header = document.querySelector('#app > div');
     if (header) {
-        const offset = header.offsetHeight;
+        let offset = header.offsetHeight;
+        // If the search bar is visible, account for its height too
+        const searchBar = document.getElementById('search-filter-container');
+        if (searchBar && !searchBar.classList.contains('hidden')) {
+            offset += searchBar.offsetHeight;
+        }
         document.documentElement.style.setProperty('--sticky-header-offset', `${offset}px`);
+        // Search bar sits just below the header with a 4px gap
+        document.documentElement.style.setProperty('--search-bar-offset', `${header.offsetHeight + 4}px`);
     }
 }
 
@@ -1028,9 +1035,9 @@ copyShareAllBtn.addEventListener('click', () => {
     // Build a deep link URL — when opened, the app reads the query params
     // and pre-fills the Join Trip modal.
     const url = `${window.location.origin}${window.location.pathname}?joinName=${encodeURIComponent(tripName)}&joinBin=${encodeURIComponent(binId)}&joinKey=${encodeURIComponent(accessKey)}`;
-    const text = `Join my trip "${tripName}" on Tripy!\n\nBin ID: ${binId}\nMaster Key: ${accessKey}\n\nOr click this link to join directly:\n${url}`;
+    const text = `Join my trip "${tripName}" on Tripy!\n\n${url}`;
     navigator.clipboard.writeText(text).then(() => {
-        window.app.updateStatus('Trip details + link copied!');
+        window.app.updateStatus('Share link copied!');
     });
 });
 
@@ -1207,13 +1214,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const d = new Date(input.value);
             if (isNaN(d.getTime())) return;
             d.setMinutes(Math.round(d.getMinutes() / 5) * 5, 0, 0);
-            const iso = d.toISOString();
-            // Set the value back as "yyyy-MM-ddTHH:MM" (local time).
-            const y = iso.slice(0, 4);
-            const m = iso.slice(5, 7);
-            const day = iso.slice(8, 10);
-            const h = iso.slice(11, 13);
-            const min = iso.slice(14, 16);
+            // Use local time methods — toISOString() returns UTC which would
+            // shift the hour/day for non-UTC timezones. datetime-local expects
+            // local time values.
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const h = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
             input.value = `${y}-${m}-${day}T${h}:${min}`;
         });
     }
@@ -1348,6 +1356,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!searchFilterContainer.classList.contains('hidden')) {
             searchInput.focus();
         }
+        // Recalculate sticky offsets now that search bar visibility changed
+        updateStickyHeaderOffset();
     });
 });
 

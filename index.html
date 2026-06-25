@@ -60,7 +60,7 @@
         </div>
 
         <!-- Search and Filter Bar (Collapsible) -->
-        <div id="search-filter-container" class="px-4 pb-4 hidden">
+        <div id="search-filter-container" class="px-4 pb-4 pt-1 sticky z-40 bg-base-100 hidden" style="top: var(--search-bar-offset, 0px)">
             <div class="flex gap-2 items-center">
                 <div class="relative flex-grow">
                     <input type="text" id="search-input" placeholder="Search items..." class="input input-bordered w-full pl-10" />
@@ -75,7 +75,7 @@
             </div>
         </div>
 
-        <div id="app-content" class="min-h-screen p-3 sm:p-4">
+        <div id="app-content" class="min-h-screen p-3 sm:p-4 bg-base-100">
             <div id="all-items" class="grid grid-cols-1 gap-3 sm:gap-4"></div>
         </div>
     </div>
