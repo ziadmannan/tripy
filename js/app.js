@@ -152,8 +152,8 @@ function renderItems() {
 
         // Render dated items in agenda view
         if (itemsWithDates.length > 0) {
-            let minDate = new Date();
-            let maxDate = new Date();
+            let minDate = new Date(8640000000000000);
+            let maxDate = new Date(-8640000000000000);
 
             itemsWithDates.forEach(item => {
                 const start = normalizeDate(item.StartDateTime);
@@ -175,30 +175,92 @@ function renderItems() {
                     return new Date(a.StartDateTime) - new Date(b.StartDateTime);
                 });
 
-                if (itemsForThisDay.length > 0) {
+                const dateRow = document.createElement('div');
+                    dateRow.className = 'flex items-center justify-between sticky z-20 bg-base-100 py-1 mt-4';
+                    dateRow.style.top = 'var(--sticky-header-offset, 0px)';
+
                     const dateHeader = document.createElement('h4');
-                    dateHeader.className = 'text-xl font-bold mt-4 mb-1 text-primary sticky z-20 bg-base-100 py-1';
-                    dateHeader.style.top = 'var(--sticky-header-offset, 0px)';
+                    dateHeader.className = 'text-xl font-bold text-primary';
                     dateHeader.dataset.date = currentDate.toISOString().slice(0, 10);
                     dateHeader.textContent = formatDateHeader(currentDate);
 
                     // Highlight today's date header more prominently
                     if (isToday(currentDate)) {
                         dateHeader.classList.remove('text-primary');
-                        dateHeader.classList.add('text-primary-content', 'bg-primary', 'rounded-lg', 'px-3', 'shadow-md');
+                        dateHeader.classList.add('text-primary-content');
+                        dateRow.classList.add('bg-primary', 'rounded-lg', 'px-3', 'shadow-md');
                     }
 
-                    allItemsContainer.appendChild(dateHeader);
+                    // Format as local date (toISOString is UTC which shifts the day for
+                    // non-zero timezones). datetime-local expects local time.
+                    const dateIso = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+
+                    // Floating popup that appears when the + button is clicked
+                    const popup = document.createElement('div');
+                    popup.className = 'date-add-popup hidden absolute right-0 top-full mt-1 z-50 bg-base-100 rounded-box w-44 shadow-lg border border-base-300 p-1';
+                    const typeList = ['Travel', 'Accommodation', 'Activity', 'Other'];
+                    typeList.forEach(t => {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn btn-ghost btn-xs justify-start gap-2 w-full';
+                        btn.innerHTML = `${getItemIcon(t)} ${t}`;
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            popup.classList.add('hidden');
+                            const dateValue = `${dateIso}T12:00`;
+                            currentItemType = t;
+                            editingItemId = null;
+                            cameFromDetailView = false;
+                            itemForm.reset();
+                            document.getElementById('item-start-datetime').value = dateValue;
+                            extraFieldsContainer.classList.add('hidden');
+                            toggleExtraFieldsBtn.textContent = '+ Add End Date/Time & To Location';
+                            itemTypeSelect.value = t;
+                            itemModalTitle.textContent = `Add New ${t} Item`;
+                            itemModalIcon.textContent = getItemIcon(t);
+                            saveItemButton.textContent = 'Save Item';
+                            itemModal.showModal();
+                        });
+                        popup.appendChild(btn);
+                    });
+
+                    // + button with its own relative wrapper for the popup
+                    const btnWrapper = document.createElement('div');
+                    btnWrapper.className = 'relative flex-shrink-0 ml-2';
+                    const addDateBtn = document.createElement('button');
+                    addDateBtn.className = 'btn btn-ghost btn-xs btn-square opacity-70 hover:opacity-100 transition-opacity'
+                        + (isToday(currentDate) ? ' text-primary-content' : '');
+                    addDateBtn.title = 'Add item on this date';
+                    addDateBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>';
+                    addDateBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const wasHidden = popup.classList.contains('hidden');
+                        // Close all date-header popups first
+                        document.querySelectorAll('.date-add-popup').forEach(p => p.classList.add('hidden'));
+                        if (wasHidden) {
+                            popup.classList.remove('hidden');
+                        }
+                    });
+                    btnWrapper.appendChild(addDateBtn);
+                    btnWrapper.appendChild(popup);
+
+                    dateRow.appendChild(dateHeader);
+                    dateRow.appendChild(btnWrapper);
+                    allItemsContainer.appendChild(dateRow);
 
                     const dayItemList = document.createElement('div');
                     dayItemList.className = 'space-y-1 sm:space-y-1.5';
-
-                    itemsForThisDay.forEach(item => {
-                        const itemCard = createItemCard(item);
-                        dayItemList.appendChild(itemCard);
-                    });
+                    if (itemsForThisDay.length > 0) {
+                        itemsForThisDay.forEach(item => {
+                            const itemCard = createItemCard(item);
+                            dayItemList.appendChild(itemCard);
+                        });
+                    } else {
+                        const emptyHint = document.createElement('p');
+                        emptyHint.className = 'text-xs text-base-content-secondary py-2 italic';
+                        emptyHint.textContent = 'No items planned for this day. Click + to add one.';
+                        dayItemList.appendChild(emptyHint);
+                    }
                     allItemsContainer.appendChild(dayItemList);
-                }
                 currentDate = addDays(currentDate, 1);
             }
         }
@@ -351,13 +413,15 @@ function scrollToDate(isoDate) {
     const stickyOffset = parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue('--sticky-header-offset')
     ) || 0;
-    // Insert a plain (non-sticky) marker before the target, scroll it into
-    // view with scroll-margin-top matching the sticky zone, then remove the
-    // marker. This avoids all the positioning quirks of sticky elements.
+    // The target (<h4>) is inside a sticky dateRow. We insert a plain marker
+    // BEFORE the sticky container (as a sibling), so scrollIntoView isn't
+    // affected by sticky positioning.
+    const dateRow = target.parentNode;
+    if (!dateRow || !dateRow.parentNode) return;
     const marker = document.createElement('div');
     marker.style.height = '1px';
     marker.style.scrollMarginTop = stickyOffset + 'px';
-    target.parentNode.insertBefore(marker, target);
+    dateRow.parentNode.insertBefore(marker, dateRow);
     marker.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setTimeout(() => marker.remove(), 800);
 }
@@ -394,10 +458,12 @@ function scrollToToday() {
         const stickyOffset = parseFloat(
             getComputedStyle(document.documentElement).getPropertyValue('--sticky-header-offset')
         ) || 0;
+        const dateRow = target.parentNode;
+        if (!dateRow || !dateRow.parentNode) return;
         const marker = document.createElement('div');
         marker.style.height = '1px';
         marker.style.scrollMarginTop = stickyOffset + 'px';
-        target.parentNode.insertBefore(marker, target);
+        dateRow.parentNode.insertBefore(marker, dateRow);
         requestAnimationFrame(() => {
             marker.scrollIntoView({ behavior: 'auto', block: 'start' });
             setTimeout(() => marker.remove(), 100);
@@ -1195,6 +1261,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Measure sticky header offset now and on resize
     updateStickyHeaderOffset();
+
+    // Close any open date-header popup when clicking outside
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.date-add-popup:not(.hidden)').forEach(p => p.classList.add('hidden'));
+    });
     window.addEventListener('resize', updateStickyHeaderOffset);
 
     // Initialize trips
