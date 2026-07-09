@@ -631,7 +631,13 @@ function generateMarkdownPreview(text) {
 
 function processInlineMarkdown(text) {
     const urlRegex = /(https?:\/\/[^\s<]+)/g;
-    text = text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" class="link link-primary">$1</a>');
+    text = text.replace(urlRegex, (match) => {
+        // If the URL looks like an image, embed it directly
+        if (/\.(jpe?g|png|gif|webp|svg|bmp|ico)(\?[^\s]*)?$/i.test(match)) {
+            return `<img src="${match}" alt="Image" loading="lazy" class="max-w-full h-auto rounded-lg my-2" />`;
+        }
+        return `<a href="${match}" target="_blank" rel="noopener noreferrer" class="link link-primary">${match}</a>`;
+    });
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     text = text.replace(/(?<!\*)\*(?!\*)(.*?)\*(?!\*)/g, '<em>$1</em>');
     text = text.replace(/`([^`]+)`/g, '<code class="bg-base-300 px-1 rounded">$1</code>');
