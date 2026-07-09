@@ -8,7 +8,7 @@
 // everything else. JSONBin API calls are never cached (they go to the network,
 // falling back to local data handled in app.js).
 
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 const CACHE_NAME = `tripy-v${APP_VERSION}`;
 const APP_SHELL = [
     './',

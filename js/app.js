@@ -676,6 +676,85 @@ async function handleImageAction(encodedUrl) {
     }
 }
 
+// ── Weather helpers ────────────────────────────────────────────────
+// Caches: location name → {lat, lon}  and  "lat,lon,date" → weather data
+const _geocodeCache = new Map();
+const _weatherCache = new Map();
+
+const WMO_ICONS = {
+    0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
+    45: '🌫️', 48: '🌫️',
+    51: '🌦️', 53: '🌦️', 55: '🌦️',
+    56: '🌦️', 57: '🌦️',
+    61: '🌧️', 63: '🌧️', 65: '🌧️',
+    66: '🌧️', 67: '🌧️',
+    71: '❄️', 73: '❄️', 75: '❄️', 77: '❄️',
+    80: '🌦️', 81: '🌦️', 82: '🌦️',
+    85: '❄️', 86: '❄️',
+    95: '⛈️', 96: '⛈️', 99: '⛈️',
+};
+
+const WMO_LABELS = {
+    0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast',
+    45: 'Foggy', 48: 'Foggy',
+    51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle',
+    56: 'Freezing drizzle', 57: 'Freezing drizzle',
+    61: 'Light rain', 63: 'Rain', 65: 'Heavy rain',
+    66: 'Freezing rain', 67: 'Freezing rain',
+    71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains',
+    80: 'Light showers', 81: 'Showers', 82: 'Heavy showers',
+    85: 'Snow showers', 86: 'Snow showers',
+    95: 'Thunderstorm', 96: 'Thunderstorm with hail', 99: 'Thunderstorm with hail',
+};
+
+/** Geocode a location name to {lat, lon} using Nominatim (OpenStreetMap). */
+async function geocodeLocation(name) {
+    if (_geocodeCache.has(name)) return _geocodeCache.get(name);
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1`;
+    const resp = await fetch(url, { headers: { 'User-Agent': 'Tripy/1.0' } });
+    if (!resp.ok) throw new Error('Geocoding failed');
+    const data = await resp.json();
+    if (!data.length) throw new Error('Location not found');
+    const result = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+    _geocodeCache.set(name, result);
+    return result;
+}
+
+/** Fetch daily weather for a lat/lon + date (YYYY-MM-DD) using Open-Meteo. */
+async function fetchWeather(lat, lon, dateStr) {
+    const key = `${lat},${lon},${dateStr}`;
+    if (_weatherCache.has(key)) return _weatherCache.get(key);
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto&forecast_days=16`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('Weather fetch failed');
+    const data = await resp.json();
+    const idx = data.daily.time.indexOf(dateStr);
+    if (idx === -1) throw new Error('Date not in forecast range');
+    const result = {
+        tempMax: data.daily.temperature_2m_max[idx],
+        tempMin: data.daily.temperature_2m_min[idx],
+        weatherCode: data.daily.weathercode[idx],
+    };
+    _weatherCache.set(key, result);
+    return result;
+}
+
+/** Show weather in the detail modal for the given location + date. */
+async function showWeatherForLocation(locationName, dateStr, weatherContainer, iconEl, tempEl, descEl, locEl) {
+    if (!locationName || !dateStr) return;
+    try {
+        const geo = await geocodeLocation(locationName);
+        const weather = await fetchWeather(geo.lat, geo.lon, dateStr);
+        iconEl.textContent = WMO_ICONS[weather.weatherCode] || '🌤️';
+        tempEl.textContent = `${Math.round(weather.tempMax)}° / ${Math.round(weather.tempMin)}°`;
+        descEl.textContent = WMO_LABELS[weather.weatherCode] || 'Unknown';
+        locEl.textContent = locationName;
+        weatherContainer.classList.remove('hidden');
+    } catch (_) {
+        // Weather unavailable — keep section hidden
+    }
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -805,6 +884,11 @@ const detailToLocation = document.getElementById('detail-to-location');
 const detailItemNotes = document.getElementById('detail-item-notes');
 const editFromDetailButton = document.getElementById('edit-from-detail-btn');
 const deleteFromDetailButton = document.getElementById('delete-from-detail-btn');
+const detailWeatherSection = document.getElementById('detail-weather-section');
+const detailWeatherIcon = document.getElementById('detail-weather-icon');
+const detailWeatherTemp = document.getElementById('detail-weather-temp');
+const detailWeatherDesc = document.getElementById('detail-weather-desc');
+const detailWeatherLocation = document.getElementById('detail-weather-location');
 
 // Search and Filter elements
 const searchFab = document.getElementById('search-fab');
@@ -1647,6 +1731,16 @@ function viewItemDetails(itemId) {
         } else {
             routeSection.classList.add('hidden');
             document.getElementById('maps-preview-container').classList.add('hidden');
+        }
+
+        // Weather: show for the location on the item's start date
+        detailWeatherSection.classList.add('hidden');
+        const weatherLocation = item.ToLocation || item.FromLocation;
+        const weatherDate = item.StartDateTime ? item.StartDateTime.slice(0, 10) : null;
+        if (weatherLocation && weatherDate) {
+            showWeatherForLocation(weatherLocation, weatherDate,
+                detailWeatherSection, detailWeatherIcon, detailWeatherTemp,
+                detailWeatherDesc, detailWeatherLocation);
         }
 
         detailItemNotes.innerHTML = generateMarkdownPreview(item.Notes);
