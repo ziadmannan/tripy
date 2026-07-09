@@ -632,9 +632,20 @@ function generateMarkdownPreview(text) {
 function processInlineMarkdown(text) {
     const urlRegex = /(https?:\/\/[^\s<]+)/g;
     text = text.replace(urlRegex, (match) => {
-        // If the URL looks like an image, embed it directly
+        // If the URL looks like an image, embed it with overlay buttons
         if (/\.(jpe?g|png|gif|webp|svg|bmp|ico)(\?[^\s]*)?$/i.test(match)) {
-            return `<img src="${match}" alt="Image" loading="lazy" class="max-w-full h-auto rounded-lg my-2" />`;
+            const encodedUrl = encodeURIComponent(match);
+            return `<div class="relative inline-block max-w-full my-2 rounded-lg overflow-hidden group">
+                <img src="${match}" alt="Image" loading="lazy" class="max-w-full h-auto rounded-lg block" />
+                <div class="absolute top-1 right-1 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <button data-img-url="${encodedUrl}" data-img-action="open" class="btn btn-xs btn-circle btn-ghost bg-base-100/80 backdrop-blur-sm shadow" title="Open image in browser">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    </button>
+                    <button data-img-url="${encodedUrl}" data-img-action="download" class="btn btn-xs btn-circle btn-ghost bg-base-100/80 backdrop-blur-sm shadow" title="Download image">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
+                    </button>
+                </div>
+            </div>`;
         }
         return `<a href="${match}" target="_blank" rel="noopener noreferrer" class="link link-primary">${match}</a>`;
     });
@@ -642,6 +653,41 @@ function processInlineMarkdown(text) {
     text = text.replace(/(?<!\*)\*(?!\*)(.*?)\*(?!\*)/g, '<em>$1</em>');
     text = text.replace(/`([^`]+)`/g, '<code class="bg-base-300 px-1 rounded">$1</code>');
     return text;
+}
+
+// In-memory store for fetched image blobs (avoids re-downloading during the session).
+const _imageBlobs = new Map();
+
+/** Download an image once, then open it from the cached blob on subsequent clicks. */
+async function handleImageAction(encodedUrl, action) {
+    const url = decodeURIComponent(encodedUrl);
+    if (action === 'open') {
+        window.open(url, '_blank', 'noopener');
+        return;
+    }
+    try {
+        let blob = _imageBlobs.get(url);
+        if (!blob) {
+            const response = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+            if (!response.ok) throw new Error('Fetch failed');
+            blob = await response.blob();
+            _imageBlobs.set(url, blob);
+        }
+        const blobUrl = URL.createObjectURL(blob);
+        if (navigator.share && blob.type.startsWith('image/')) {
+            const ext = blob.type.split('/')[1] || 'jpg';
+            const file = new File([blob], `image.${ext}`, { type: blob.type });
+            navigator.share({ files: [file] }).catch(() => {
+                window.open(blobUrl, '_blank');
+            });
+        } else {
+            window.open(blobUrl, '_blank');
+        }
+        // Revoke after a generous timeout so the opened tab has time to load
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+    } catch (e) {
+        window.open(url, '_blank', 'noopener');
+    }
 }
 
 function escapeHtml(text) {
@@ -1269,8 +1315,14 @@ document.addEventListener('DOMContentLoaded', () => {
     updateStickyHeaderOffset();
 
     // Close any open date-header popup when clicking outside
-    document.addEventListener('click', () => {
+    document.addEventListener('click', (e) => {
         document.querySelectorAll('.date-add-popup:not(.hidden)').forEach(p => p.classList.add('hidden'));
+        // Handle image download/open buttons
+        const btn = e.target.closest('[data-img-action]');
+        if (btn) {
+            e.preventDefault();
+            handleImageAction(btn.dataset.imgUrl, btn.dataset.imgAction);
+        }
     });
     window.addEventListener('resize', updateStickyHeaderOffset);
 
